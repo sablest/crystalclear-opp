@@ -1,0 +1,2 @@
+# Spec files are fingerprinted byte for byte in the ledger: never convert their line endings.
+spec/*.md -text
