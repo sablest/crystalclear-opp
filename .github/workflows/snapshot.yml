@@ -1,0 +1,99 @@
+name: Daily ledger snapshot
+
+# Once a day, copies the public ledger, every published guide manifest and every content text into
+# this repository (tools/snapshot.mjs), commits only if something changed, then checks the copy.
+# It reads only what any visitor can read. The keys below are publishable keys: the same public key
+# every visitor's browser receives from the site. The only credential used is the job's own
+# GITHUB_TOKEN, which lets it commit here. How to check a snapshot yourself: snapshots/README.md.
+
+on:
+  schedule:
+    - cron: '23 3 * * *' # every day at 03:23 UTC, so the previous UTC day is complete
+  workflow_dispatch: # "Run workflow" button in the Actions tab
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ledger-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Demo data never shares a branch with production data: demo snapshots live on the
+          # `demo` branch; the site's own meta.dataset is checked against `target` before writing.
+          - target: demo
+            enabled: true
+            branch: demo
+            site: https://demo.crystalclear.guide
+            supabase_url: https://ozjgnsthtftrvayduioc.supabase.co
+            supabase_key: sb_publishable_rnIJIrWYIxokqO7HT8KPSg_wZTVKZWs
+          - target: production
+            enabled: false # <- the switch: set to true at Genesis
+            branch: main
+            site: https://www.crystalclear.guide
+            supabase_url: https://wrwnrbvwooybnecshvdo.supabase.co
+            supabase_key: sb_publishable_3gKHaPk6zq8HZk5_ESOWoQ_VUqtOA5D
+    env:
+      TARGET: ${{ matrix.target }}
+      BRANCH: ${{ matrix.branch }}
+      SITE: ${{ matrix.site }}
+      SUPABASE_URL: ${{ matrix.supabase_url }}
+      SUPABASE_KEY: ${{ matrix.supabase_key }}
+      OUT: target/snapshots/${{ matrix.target }}
+    steps:
+      - name: Switched off
+        if: ${{ !matrix.enabled }}
+        run: echo "The $TARGET snapshot is switched off (enabled is false in .github/workflows/snapshot.yml)."
+
+      - uses: actions/checkout@v4
+        if: ${{ matrix.enabled }}
+
+      - name: Open the snapshot branch
+        if: ${{ matrix.enabled }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            git fetch --depth=1 origin "$BRANCH"
+            git worktree add --detach target FETCH_HEAD
+          else
+            git worktree add --orphan -b "$BRANCH" target
+          fi
+
+      - name: Take the snapshot and commit it if anything changed
+        if: ${{ matrix.enabled }}
+        run: |
+          mkdir -p target/snapshots
+          cp .gitattributes target/.gitattributes
+          cp snapshots/README.md target/snapshots/README.md
+          status=0
+          node tools/snapshot.mjs || status=$?
+          if [ "$status" -eq 2 ]; then exit 2; fi
+          cd target
+          git add -A .gitattributes snapshots
+          if git diff --cached --quiet; then
+            echo "No change since the last snapshot: nothing committed."
+          else
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -q -m "Snapshot $TARGET $(date -u +%F)"
+            git push origin "HEAD:refs/heads/$BRANCH"
+          fi
+          exit "$status"
+
+      - name: Check the snapshot the way a visitor would
+        if: ${{ matrix.enabled }}
+        run: |
+          cd "$OUT"
+          bad=0
+          for f in manifests/*.json texts/*.json; do
+            [ "$(sha256sum "$f" | cut -c1-64)" = "$(basename "$f" .json)" ] || { echo "Name is not the sha256 of the file: $f"; bad=1; }
+          done
+          echo "File names checked against their sha256: $(ls manifests texts | grep -c '\.json$') files"
+          curl -fsS "$SITE/ledger/verify.mjs" -o "$RUNNER_TEMP/verify.mjs"
+          node "$RUNNER_TEMP/verify.mjs" ledger.json
+          exit "$bad"
