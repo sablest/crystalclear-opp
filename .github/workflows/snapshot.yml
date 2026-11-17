@@ -54,7 +54,7 @@ jobs:
         if: ${{ !matrix.enabled }}
         run: echo "The $TARGET snapshot is switched off (enabled is false in .github/workflows/snapshot.yml)."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         if: ${{ matrix.enabled }}
 
       - name: Open the snapshot branch
