@@ -11,6 +11,8 @@ This repository holds the public side of the Open Proof Protocol (OPP) used by
   [`snapshots/README.md`](snapshots/README.md).
 - **`tools/snapshot.mjs`** and **`.github/workflows/snapshot.yml`** — the daily job that
   writes them. It reads only public data.
+- **`tools/verify.mjs`** — a copy of the site's ledger checker (`/ledger/verify.mjs`), used by
+  the job and by anyone checking a snapshot. Update it when the site's checker changes.
 
 ## Check that the rules are the ones the ledger was started with
 
