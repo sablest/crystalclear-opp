@@ -10,6 +10,8 @@ on:
   schedule:
     - cron: '23 3 * * *' # every day at 03:23 UTC, so the previous UTC day is complete
   workflow_dispatch: # "Run workflow" button in the Actions tab
+  push: # TEMPORARY, removed before merge: lets the PR branch run once on GitHub
+    branches: [claude/project-thread-nyx730]
 
 permissions:
   contents: write
