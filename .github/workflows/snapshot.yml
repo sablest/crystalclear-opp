@@ -11,8 +11,6 @@ name: Daily ledger snapshot
 on:
   schedule:
     - cron: '23 3 * * *' # every day at 03:23 UTC, so the previous UTC day is complete
-  push: # TEMPORARY, removed before merge: lets the PR branch run on GitHub
-    branches: [claude/project-thread-nyx730]
   workflow_dispatch: # "Run workflow" button in the Actions tab
     inputs:
       accept_rewrite:
