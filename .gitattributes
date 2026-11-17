@@ -1,0 +1,4 @@
+# Spec files are fingerprinted byte for byte in the ledger: never convert their line endings.
+spec/*.md -text
+# Snapshots are hashed byte for byte too (see snapshots/README.md).
+snapshots/** -text
