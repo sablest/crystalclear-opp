@@ -14,10 +14,13 @@ record later, the copy here, and its history in git, would show it.
 Each folder holds:
 
 - **`ledger.json`** — every public record, exactly as the site's "Download records (JSON)" serves it
-  (`/ledger/download`). It is replaced only when the records change; `git log` on this file gives
-  every earlier day.
-- **`manifests/<sha256>.json`** — every published version of a guide (its stages, paths, materials
-  and links), exactly as stored. The file name is the file's own SHA-256, which is the
+  (`/ledger/download`). It is replaced only when new records arrive, and only if every record of the
+  previous copy is still there, unchanged; `git log` on this file gives every earlier day.
+- **`ledger-rejected.json`** — normally absent. It appears when a download no longer contains an
+  earlier record unchanged: the job then keeps `ledger.json` as it was, saves that download here as
+  evidence, and fails every day until a person looks.
+- **`manifests/<sha256>.json`** — every version of a guide that the ledger records as published
+  (its stages, paths, materials and links), exactly as stored. The file name is the file's own SHA-256, which is the
   `subject_hash` of the ledger's `version_published` record for that version.
 - **`texts/<sha256>.json`** — every published text of a guide page, exactly as stored, named the same
   way after the `subject_hash` of its `content_updated` record.
@@ -30,17 +33,17 @@ site. A day with no new records adds no commit.
 You need [Node.js](https://nodejs.org) 18 or newer and nothing else. Nothing below needs our
 database or an account.
 
-**1. Check every record and the chain.** Download the checker from the site (or take
-`public/ledger/verify.mjs` from the source code) and run it on the snapshot:
+**1. Check every record and the chain.** Run the checker on the snapshot. A copy of it is kept in
+this repository (`tools/verify.mjs`); the site serves the same file at
+<https://www.crystalclear.guide/ledger/verify.mjs>:
 
 ```
-curl -O https://www.crystalclear.guide/ledger/verify.mjs
-node verify.mjs snapshots/production/ledger.json
+node tools/verify.mjs snapshots/production/ledger.json
 ```
 
 It recomputes the hash of every record from the record's own fields, checks that each record points
 to the hash of the one before it, and recounts the results. It ends with `All checks passed.`
-when everything matches. `node verify.mjs ledger.json --explain 12` shows, field by field, how the
+when everything matches. `node tools/verify.mjs <ledger.json> --explain 12` shows, field by field, how the
 hash of record 12 is built. The full recipe is at <https://www.crystalclear.guide/ledger/verify>.
 
 **2. Check that a guide said what the ledger says it said.** Each manifest and text is named after
