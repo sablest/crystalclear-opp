@@ -1,0 +1,131 @@
+name: Daily ledger snapshot
+
+# Once a day, copies the public ledger and every guide manifest and text it points to into this
+# repository (tools/snapshot.mjs), commits only if something changed, then checks the copy with
+# tools/verify.mjs — a copy kept here of the site's checker, so the check does not depend on the
+# site. It reads only what any visitor can read. The keys below are publishable keys: the same
+# public key every visitor's browser receives from the site. The only credential is the job's own
+# GITHUB_TOKEN, handed to the push command only. How to check a snapshot yourself:
+# snapshots/README.md.
+
+on:
+  schedule:
+    - cron: '23 3 * * *' # every day at 03:23 UTC, so the previous UTC day is complete
+  workflow_dispatch: # "Run workflow" button in the Actions tab
+    inputs:
+      accept_rewrite:
+        description: 'Accept that earlier records changed or disappeared (only after a deliberate demo reset)'
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: ledger-snapshot
+  cancel-in-progress: false
+
+jobs:
+  snapshot:
+    name: ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Demo data never shares a branch with production data: demo snapshots live on the
+          # `demo` branch; the site's own meta.dataset is checked against `target` before writing.
+          - target: demo
+            enabled: true
+            branch: demo
+            site: https://demo.crystalclear.guide
+            supabase_url: https://ozjgnsthtftrvayduioc.supabase.co
+            supabase_key: sb_publishable_rnIJIrWYIxokqO7HT8KPSg_wZTVKZWs
+          - target: production
+            enabled: false # <- the switch: set to true at Genesis
+            branch: main
+            site: https://www.crystalclear.guide
+            supabase_url: https://wrwnrbvwooybnecshvdo.supabase.co
+            supabase_key: sb_publishable_3gKHaPk6zq8HZk5_ESOWoQ_VUqtOA5D
+    env:
+      TARGET: ${{ matrix.target }}
+      BRANCH: ${{ matrix.branch }}
+      SITE: ${{ matrix.site }}
+      SUPABASE_URL: ${{ matrix.supabase_url }}
+      SUPABASE_KEY: ${{ matrix.supabase_key }}
+      OUT: target/snapshots/${{ matrix.target }}
+      ACCEPT_REWRITE: ${{ inputs.accept_rewrite == true }}
+    steps:
+      - name: Switched off
+        if: ${{ !matrix.enabled }}
+        run: echo "::notice::The $TARGET snapshot is SWITCHED OFF (enabled is false in .github/workflows/snapshot.yml). Nothing was copied."
+
+      - uses: actions/checkout@v5
+        if: ${{ matrix.enabled }}
+        with:
+          persist-credentials: false # the token is given to the push command only
+
+      - name: Open the snapshot branch
+        if: ${{ matrix.enabled }}
+        run: |
+          if git ls-remote --exit-code --heads origin "$BRANCH" > /dev/null; then
+            git fetch --depth=1 origin "$BRANCH"
+            git worktree add --detach target FETCH_HEAD
+          else
+            git worktree add --orphan -b "$BRANCH" target
+          fi
+
+      - name: Take the snapshot
+        id: snapshot
+        if: ${{ matrix.enabled }}
+        run: |
+          mkdir -p target/snapshots
+          cp .gitattributes target/.gitattributes
+          cp snapshots/README.md target/snapshots/README.md
+          status=0
+          node tools/snapshot.mjs || status=$?
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          # 2 = nothing usable was downloaded: stop here, commit nothing.
+          if [ "$status" -eq 2 ]; then exit 2; fi
+
+      - name: Commit if anything changed
+        if: ${{ matrix.enabled }}
+        env:
+          TOKEN: ${{ github.token }}
+        run: |
+          cd target
+          git add -A .gitattributes snapshots
+          if git diff --cached --quiet; then
+            echo "No change since the last snapshot: nothing committed."
+            exit 0
+          fi
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+            commit -q -m "Snapshot $TARGET $(date -u +%F)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$TOKEN" | base64 -w0)" \
+            push origin "HEAD:refs/heads/$BRANCH"
+
+      - name: Check the snapshot the way a visitor would
+        if: ${{ always() && matrix.enabled && hashFiles(format('{0}/ledger.json', env.OUT)) != '' }}
+        run: |
+          bad=0
+          (
+            cd "$OUT"
+            for f in manifests/*.json texts/*.json; do
+              [ -e "$f" ] || continue
+              [ "$(sha256sum "$f" | cut -c1-64)" = "$(basename "$f" .json)" ] || { echo "Name is not the sha256 of the file: $f"; exit 1; }
+            done
+            echo "File names checked against their sha256: $(ls manifests texts | grep -c '\.json$') files"
+          ) || bad=1
+          node tools/verify.mjs "$OUT/ledger.json" || bad=1
+          exit "$bad"
+
+      - name: Report the snapshot's own result
+        if: ${{ matrix.enabled && steps.snapshot.outputs.status != '0' }}
+        run: |
+          case "${{ steps.snapshot.outputs.status }}" in
+            1) echo "::error::A ledger record points to a manifest or text that is not kept (see 'Take the snapshot')." ;;
+            3) echo "::error::Earlier records changed or disappeared since the last snapshot (see 'Take the snapshot'). ledger.json was kept; the new download is in ledger-rejected.json." ;;
+            *) echo "::error::Snapshot failed with status ${{ steps.snapshot.outputs.status }}." ;;
+          esac
+          exit 1
