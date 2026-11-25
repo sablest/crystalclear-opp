@@ -20,14 +20,17 @@
 //                            until a person looks.
 //   manifests/<sha256>.json  the exact text of every guide manifest a `version_published` record points to,
 //                            named by its sha256 (= that record's `subject_hash`).
-//   texts/<sha256>.json      the exact `canonical_text` every `content_updated` record points to, named the
-//                            same way.
-// Manifests and texts are only ever added, never changed or removed, so they stay here after their guide
-// is withdrawn and the database stops showing them. A day with no change writes nothing.
+// Manifests are only ever added, never changed or removed, so they stay here after their guide is
+// withdrawn and the database stops showing them. A day with no change writes nothing.
+//
+// The texts of guide pages are NOT copied (owner's decision, 2026-11-25): a public repository keeps
+// everything forever, and the protocol only promises a text to those who can read that page of the guide.
+// A `content_updated` record still carries the sha256 of its text (`subject_hash`), so anyone who has the
+// text can check it against the ledger. The text itself lives only in the database.
 //
 // Everything is downloaded before anything is written. Exit code:
 //   0  done
-//   1  written, but a ledger record points to a manifest or text that is in neither the database nor here
+//   1  written, but a `version_published` record points to a manifest that is in neither the database nor here
 //   2  nothing written (wrong dataset, site or API down, any unexpected error)
 //   3  earlier records changed or disappeared: ledger.json kept, the new download saved as ledger-rejected.json
 
@@ -76,7 +79,6 @@ async function main() {
     }
   }
   const manifests = await readAll('guide_versions', 'manifest')
-  const texts = await readAll('content_revisions', 'canonical_text')
 
   // -------------------------------------------------------------------------------------------
   // 2. The ledger: replaced only if every earlier record is still there, unchanged.
@@ -114,40 +116,37 @@ async function main() {
   }
 
   // -------------------------------------------------------------------------------------------
-  // 3. Manifests and texts the ledger points to. A file whose hash is not in the ledger is not kept:
+  // 3. Manifests the ledger points to. A manifest whose hash is not in the ledger is not kept:
   //    it is either newer than the download (kept tomorrow) or from another database.
 
-  const subjects = ledger.events.filter((e) => e.kind === 'version_published' || e.kind === 'content_updated')
+  const subjects = ledger.events.filter((e) => e.kind === 'version_published')
   const wanted = new Set(subjects.map((e) => e.subject_hash))
 
-  function archive(folder, list) {
-    const dir = join(OUT, folder)
-    mkdirSync(dir, { recursive: true })
-    let added = 0
-    let other = 0
-    for (const text of list) {
-      const hash = sha256(text)
-      if (!wanted.has(hash)) {
-        other++
-        continue
-      }
-      const file = join(dir, `${hash}.json`)
-      if (existsSync(file)) continue
-      writeFileSync(file, text, 'utf8')
-      added++
+  const dir = join(OUT, 'manifests')
+  mkdirSync(dir, { recursive: true })
+  let added = 0
+  let other = 0
+  for (const text of manifests) {
+    const hash = sha256(text)
+    if (!wanted.has(hash)) {
+      other++
+      continue
     }
-    console.log(`${folder}: ${list.length} readable now, ${added} new${other ? `, ${other} not in this ledger (not kept)` : ''}`)
+    const file = join(dir, `${hash}.json`)
+    if (existsSync(file)) continue
+    writeFileSync(file, text, 'utf8')
+    added++
   }
-  archive('manifests', manifests)
-  archive('texts', texts)
+  console.log(`manifests: ${manifests.length} readable now, ${added} new${other ? `, ${other} not in this ledger (not kept)` : ''}`)
 
   // -------------------------------------------------------------------------------------------
-  // 4. Every author record must point to a file kept here (today's or an earlier day's).
+  // 4. Every `version_published` record must point to a manifest kept here (today's or an earlier day's).
 
-  const kept = (hash) => existsSync(join(OUT, 'manifests', `${hash}.json`)) || existsSync(join(OUT, 'texts', `${hash}.json`))
-  const missing = subjects.filter((e) => !kept(e.subject_hash))
-  console.log(`Ledger records with a manifest or text: ${subjects.length}, file kept for ${subjects.length - missing.length}`)
+  const missing = subjects.filter((e) => !existsSync(join(dir, `${e.subject_hash}.json`)))
+  console.log(`Ledger records with a manifest: ${subjects.length}, file kept for ${subjects.length - missing.length}`)
   for (const e of missing.slice(0, 10)) console.log(`  missing: chain_seq ${e.chain_seq} ${e.kind} ${e.subject_hash}`)
+  const textRecords = ledger.events.filter((e) => e.kind === 'content_updated').length
+  console.log(`Ledger records about a page text: ${textRecords} (texts are not copied here, only their sha256 in the ledger)`)
 
   if (historyChanged) return 3
   return missing.length ? 1 : 0

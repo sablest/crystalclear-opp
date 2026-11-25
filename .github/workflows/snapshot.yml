@@ -1,7 +1,8 @@
 name: Daily ledger snapshot
 
-# Once a day, copies the public ledger and every guide manifest and text it points to into this
-# repository (tools/snapshot.mjs), commits only if something changed, then checks the copy with
+# Once a day, copies the public ledger and every guide manifest it points to into this repository
+# (tools/snapshot.mjs; the texts of guide pages are not copied), commits only if something changed,
+# then checks the copy with
 # tools/verify.mjs — a copy kept here of the site's checker, so the check does not depend on the
 # site. It reads only what any visitor can read. The keys below are publishable keys: the same
 # public key every visitor's browser receives from the site. The only credential is the job's own
@@ -111,11 +112,13 @@ jobs:
           bad=0
           (
             cd "$OUT"
-            for f in manifests/*.json texts/*.json; do
+            count=0
+            for f in manifests/*.json; do
               [ -e "$f" ] || continue
               [ "$(sha256sum "$f" | cut -c1-64)" = "$(basename "$f" .json)" ] || { echo "Name is not the sha256 of the file: $f"; exit 1; }
+              count=$((count + 1))
             done
-            echo "File names checked against their sha256: $(ls manifests texts | grep -c '\.json$') files"
+            echo "File names checked against their sha256: $count files"
           ) || bad=1
           node tools/verify.mjs "$OUT/ledger.json" || bad=1
           exit "$bad"
@@ -124,7 +127,7 @@ jobs:
         if: ${{ matrix.enabled && steps.snapshot.outputs.status != '0' }}
         run: |
           case "${{ steps.snapshot.outputs.status }}" in
-            1) echo "::error::A ledger record points to a manifest or text that is not kept (see 'Take the snapshot')." ;;
+            1) echo "::error::A version_published record points to a manifest that is not kept (see 'Take the snapshot')." ;;
             3) echo "::error::Earlier records changed or disappeared since the last snapshot (see 'Take the snapshot'). ledger.json was kept; the new download is in ledger-rejected.json." ;;
             *) echo "::error::Snapshot failed with status ${{ steps.snapshot.outputs.status }}." ;;
           esac
