@@ -28,8 +28,8 @@ day with no new records adds no commit.
 
 **The texts of guide pages are not copied here.** The ledger records every change of a page text as
 a `content_updated` record whose `subject_hash` is the SHA-256 of that text, so anyone who can read
-the page can check that it is the text the ledger points to — but the text itself is shown only on
-the site. (`snapshots/demo/texts/` on the `demo` branch is left over from before 2026-11-25, when
+the page can check that it is the text the ledger points to — but the text itself is not archived
+here. (`snapshots/demo/texts/` on the `demo` branch is left over from before 2026-11-25, when
 the demo snapshot still copied them; nothing is added there any more.)
 
 ## How to check a snapshot
