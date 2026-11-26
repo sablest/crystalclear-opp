@@ -22,11 +22,15 @@ Each folder holds:
 - **`manifests/<sha256>.json`** — every version of a guide that the ledger records as published
   (its stages, paths, materials and links), exactly as stored. The file name is the file's own SHA-256, which is the
   `subject_hash` of the ledger's `version_published` record for that version.
-- **`texts/<sha256>.json`** — every published text of a guide page, exactly as stored, named the same
-  way after the `subject_hash` of its `content_updated` record.
 
-Files are only ever added. A manifest or text stays here even after its guide is withdrawn from the
-site. A day with no new records adds no commit.
+Files are only ever added. A manifest stays here even after its guide is withdrawn from the site. A
+day with no new records adds no commit.
+
+**The texts of guide pages are not copied here.** The ledger records every change of a page text as
+a `content_updated` record whose `subject_hash` is the SHA-256 of that text, so anyone who can read
+the page can check that it is the text the ledger points to — but the text itself is not archived
+here. (`snapshots/demo/texts/` on the `demo` branch is left over from before 2026-11-25, when
+the demo snapshot still copied them; nothing is added there any more.)
 
 ## How to check a snapshot
 
@@ -46,17 +50,17 @@ to the hash of the one before it, and recounts the results. It ends with `All ch
 when everything matches. `node tools/verify.mjs <ledger.json> --explain 12` shows, field by field, how the
 hash of record 12 is built. The full recipe is at <https://www.crystalclear.guide/ledger/verify>.
 
-**2. Check that a guide said what the ledger says it said.** Each manifest and text is named after
-its own SHA-256, so it is enough to hash it:
+**2. Check that a guide was built the way the ledger says.** Each manifest is named after its own
+SHA-256, so it is enough to hash it:
 
 ```
 cd snapshots/production
-sha256sum manifests/*.json texts/*.json
+sha256sum manifests/*.json
 ```
 
 Every line must show the same hash twice (as the hash and as the file name). Then pick a
-`version_published` or `content_updated` record in `ledger.json`: its `subject_hash` is the name of
-the file holding what was published.
+`version_published` record in `ledger.json`: its `subject_hash` is the name of the file holding what
+was published.
 
 **3. Check that nothing was rewritten.** Compare today's `ledger.json` with an older one from git
 history (`git log -p snapshots/production/ledger.json`): records are only ever added at the end.

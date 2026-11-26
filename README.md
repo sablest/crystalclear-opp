@@ -6,7 +6,7 @@ This repository holds the public side of the Open Proof Protocol (OPP) used by
 - **`spec/`** — the binding text of each protocol version. Each file is frozen: a
   change to the rules is a new version with a new file.
 - **`snapshots/`** — daily copies of the public ledger and of every published guide
-  manifest and text, kept outside our database. Production starts with the pilot on
+  manifest, kept outside our database (the texts of guide pages are not copied). Production starts with the pilot on
   `main`; demo data lives only on the `demo` branch. How to check them:
   [`snapshots/README.md`](snapshots/README.md).
 - **`tools/snapshot.mjs`** and **`.github/workflows/snapshot.yml`** — the daily job that
