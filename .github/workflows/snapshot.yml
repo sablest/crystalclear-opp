@@ -43,7 +43,7 @@ jobs:
             supabase_url: https://ozjgnsthtftrvayduioc.supabase.co
             supabase_key: sb_publishable_rnIJIrWYIxokqO7HT8KPSg_wZTVKZWs
           - target: production
-            enabled: false # <- the switch: set to true at Genesis
+            enabled: true # switched on at Genesis (pilot, 30 Nov 2026)
             branch: main
             site: https://www.crystalclear.guide
             supabase_url: https://wrwnrbvwooybnecshvdo.supabase.co
